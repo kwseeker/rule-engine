@@ -78,11 +78,105 @@
 
 ### [EasyRules](https://github.com/j-easy/easy-rules)
 
+特点：
+
++ 轻量、简单易学
++ 基于POJO开发
++ 用于定义业务规则并轻松应用的有用抽象
++ 有从原始规则创建复合规则的能力
++ 有使用表达式语言定义规则的能力
+
 ### [Urule](http://www.bstek.com/resources/doc/)
+
+### ...
 
 
 
 ## 3 案例
 
-### EasyRules Demo
+### 3.1 EasyRules Demo
 
+[wiki](https://github.com/j-easy/easy-rules/wiki)
+
+**定义了几个重要概念**：
+
+事实（Facts）、规则（Rule) ｛条件（Condition）, 动作（Action）｝
+
++ 规则
+
+  组合规则：
+
+  + UnitRuleGroup
+  + ActivationRuleGroup
+  + ConditionalRuleGroup
+
+**辅助概念**：
+
+规则名称（Name）、规则描述（Description）、优先级（Priority）。
+
+**支持三种规则定义方式**：
+
++ 注解
++ Fluent API
++ Expression Language (表达式语言)VI
+  + jexl（Java Expression Language）
+  + mvel（MVFLEX Expression Language）
+  + spel（Spring Expression Language）
+
+**案例**：
+
+以美团外卖举例：老用户享受津贴优惠、商家代金券、VIP会员优惠、大额红包优惠。
+
+
+
+## 4 原理
+
+### Rule代理类生成规则
+
+@Rule注解的Class, 最终都是通过生成代理类完成工作的。
+
+```java
+result = (Rule) Proxy.newProxyInstance(
+                    Rule.class.getClassLoader(),
+                    new Class[]{Rule.class, Comparable.class},
+                    new RuleProxy(rule));
+```
+
+
+
+## 5 Q&A
+
++ **同一个规则的Class定义的多个实例，为何无法加入到`ActivationRuleGroup`？**
+
+  经过跟踪源码，发现加入到`ActivationRuleGroup` TreeSet规则集合的其实是动态代理类，案例中规则Class我们没有实现的Comparable接口其实是在InvocationHandler中增强的。
+
+  从下面代码发现同一个Class的多个实例，代码类的name都是相同的，所以加入失败。
+
+  暂时没有什么解决方法，或者改成完全使用编码方式（不要通过@Rule等注解定义规则）。
+
+  ```java
+      //先比较优先级，没有定义优先级就比较name属性，
+      private int compareTo(final Rule otherRule) throws Exception {
+          int otherPriority = otherRule.getPriority();
+          int priority = getRulePriority();
+          if (priority < otherPriority) {
+              return -1;
+          } else if (priority > otherPriority) {
+              return 1;
+          } else {
+              String otherName = otherRule.getName();
+              String name = getRuleName();
+              return name.compareTo(otherName);
+          }
+      }
+      //name属性来源（1 @Rule, 2 Class simpleName）
+      private String getRuleName() {
+          if (this.name == null) {
+              org.jeasy.rules.annotation.Rule rule = getRuleAnnotation();
+              this.name = rule.name().equals(Rule.DEFAULT_NAME) ? getTargetClass().getSimpleName() : rule.name();
+          }
+          return this.name;
+      }
+  ```
+
+  
